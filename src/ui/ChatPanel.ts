@@ -296,9 +296,9 @@ export class ChatPanel {
   // ---------------------------------------------------------------------------
 
   private handleStreamData(data: string): void {
-    // 去除首个数据块的前导空白（dscli 输出前会带一个 \n）
+    // 去除前导空白和思考标记（DeepSeek 输出前会带 \n 和 . 字符）
     if (!this.streamMessageId) {
-      data = data.replace(/^\s+/, '');
+      data = data.replace(/^[\s.]+/, '');
       if (!data) {
         return;
       }

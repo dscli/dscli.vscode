@@ -298,9 +298,14 @@
             inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
         });
 
-        // 键盘事件
+        // 输入法组合状态（防止选字时 Enter 触发发送）
+        let isComposing = false;
+        inputEl.addEventListener('compositionstart', () => { isComposing = true; });
+        inputEl.addEventListener('compositionend', () => { isComposing = false; });
+
+        // 键盘事件（输入法选字期间忽略 Enter）
         inputEl.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
                 e.preventDefault();
                 send();
             }

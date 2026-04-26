@@ -92,8 +92,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "package": "vsce package",
-    "build": "npm run compile && vsce package"
+    "package": "vsce package --baseImagesUrl https://gitcode.com/dscli/dscli.vscode/raw/main --baseContentUrl https://gitcode.com/dscli/dscli.vscode/raw/main",
+    "build": "npm run compile && npm run package"
   },
   "devDependencies": {
     "@jest/globals": "^30.3.0",

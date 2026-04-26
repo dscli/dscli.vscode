@@ -25,7 +25,7 @@ describe('ConfigService', () => {
       const config = service.getConfig();
 
       expect(config.executablePath).toBe('dscli');
-      expect(config.model).toBe('deepseek-chat');
+      expect(config.model).toBe('deepseek-v4-flash');
     });
 
     it('should return user-configured values', () => {

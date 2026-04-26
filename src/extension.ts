@@ -76,10 +76,6 @@ export class DscliExtension {
 
             logger.info('dscli 扩展初始化完成');
 
-            // 欢迎消息
-            vscode.window.showInformationMessage(
-                `🤖 dscli 已激活！使用 Cmd+Shift+P 搜索 "dscli" 开始使用。`
-            );
 
         } catch (error) {
             logger.error('扩展初始化失败', error);
