@@ -3,7 +3,7 @@
 [![VS Code Version](https://img.shields.io/badge/VS%20Code-%3E%3D1.85.0-blue)](https://code.visualstudio.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-将 [dscli](https://gitcode.com/dscli/dscli) 的 AI 编程能力集成到 VSCode，提供对话式代码助手体验。
+将 [dscli](https://github.com/dscli/dscli) 的 AI 编程能力集成到 VSCode，提供对话式代码助手体验。
 
 扩展本身是一个轻量 UI 层，所有智能能力（对话、工具调用、项目上下文、技能系统）由 dscli CLI 后端提供。
 
@@ -30,7 +30,7 @@
 
 | 依赖 | 用途 | 安装方式 |
 | ---- | ---- | ---- |
-| **dscli CLI** | AI 对话后端 | `go install gitcode.com/dscli/dscli@latest` |
+| **dscli CLI** | AI 对话后端 | `go install github.com/dscli/dscli@latest` |
 | **DeepSeek API Key** | 大模型认证 | [platform.deepseek.com](https://platform.deepseek.com/) |
 
 验证 dscli 安装：
@@ -45,7 +45,7 @@ dscli version
 
 ### 方法一：从 VSIX 安装
 
-1. 从 [Releases](https://gitcode.com/dscli/dscli.vscode/releases) 下载最新 `.vsix` 文件
+1. 从 [Releases](https://github.com/dscli/dscli.vscode/releases) 下载最新 `.vsix` 文件
 2. 安装：
 
    ```bash
@@ -57,7 +57,7 @@ dscli version
 ### 方法二：从源码构建
 
 ```bash
-git clone https://gitcode.com/dscli/dscli.vscode.git
+git clone https://github.com/dscli/dscli.vscode.git
 cd dscli.vscode
 npm install
 npm run build
@@ -150,10 +150,10 @@ code --uninstall-extension dscli.dscli-vscode
 
 ## 许可证
 
-Apache License 2.0 — Copyright © 2025-2026 [dscli](https://gitcode.com/dscli)
+Apache License 2.0 — Copyright © 2025-2026 [dscli](https://github.com/dscli)
 
 ## 链接
 
-- [dscli 命令行工具](https://gitcode.com/dscli/dscli)
+- [dscli 命令行工具](https://github.com/dscli/dscli)
 - [DeepSeek 开放平台](https://platform.deepseek.com/)
-- [问题反馈](https://gitcode.com/dscli/dscli.vscode/issues)
+- [问题反馈](https://github.com/dscli/dscli.vscode/issues)
