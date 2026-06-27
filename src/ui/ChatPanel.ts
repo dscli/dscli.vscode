@@ -54,6 +54,45 @@ export class ChatPanel {
   }
 
   /**
+   * 解析 EDITOR 环境变量。
+   *
+   * 如果 Extension Host 已有 EDITOR，直接跳过（尊重用户已有的配置）。
+   * 否则通过 vscode.env.appRoot 定位当前运行的 VSCode CLI 路径，
+   * 设置 EDITOR="<code-absolute-path> --wait"，确保 dscli 的 askUser
+   * 能用 VSCode 打开编辑器并等待编辑完成。
+   */
+  private resolveEditorEnv(): Record<string, string> {
+    if (process.env.EDITOR) {
+      return {};
+    }
+
+    const appRoot = vscode.env.appRoot;
+    if (!appRoot) {
+      return {};
+    }
+
+    // 平台相关候选路径
+    const isWin = process.platform === 'win32';
+    const candidates: string[] = [
+      path.join(appRoot, 'bin', isWin ? 'code.cmd' : 'code'),
+      path.resolve(appRoot, '..', 'bin', isWin ? 'code.cmd' : 'code'),
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate)) {
+          return { EDITOR: `"${candidate}" --wait` };
+        }
+      } catch {
+        // 个别候选路径可能存在权限问题，继续尝试下一个
+      }
+    }
+
+    return {};
+  }
+
+
+  /**
    * 创建或显示聊天面板
    */
   public show(): vscode.WebviewPanel {
@@ -246,7 +285,7 @@ export class ChatPanel {
         args: ['chat'],
         cwd,
         input: content,
-        env: { DEEPSEEK_API_KEY: apiKey },
+        env: { DEEPSEEK_API_KEY: apiKey, ...this.resolveEditorEnv() },
         onData: (data: string) => {
           this.handleStreamData(data);
         },
