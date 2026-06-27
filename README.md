@@ -3,7 +3,7 @@
 [![VS Code Version](https://img.shields.io/badge/VS%20Code-%3E%3D1.85.0-blue)](https://code.visualstudio.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-将 [dscli](https://gitcode.com/dscli/dscli) 的 AI 编程能力集成到 VSCode，提供对话式代码助手体验。
+将 [dscli](https://github.com/dscli/dscli) 的 AI 编程能力集成到 VSCode，提供对话式代码助手体验。
 
 扩展本身是一个轻量 UI 层，所有智能能力（对话、工具调用、项目上下文、技能系统）由 dscli CLI 后端提供。
 
@@ -30,7 +30,7 @@
 
 | 依赖 | 用途 | 安装方式 |
 | ---- | ---- | ---- |
-| **dscli CLI** | AI 对话后端 | `go install gitcode.com/dscli/dscli@latest` |
+| **dscli CLI** | AI 对话后端 | `go install github.com/dscli/dscli@latest` |
 | **DeepSeek API Key** | 大模型认证 | [platform.deepseek.com](https://platform.deepseek.com/) |
 
 验证 dscli 安装：
@@ -45,7 +45,7 @@ dscli version
 
 ### 方法一：从 VSIX 安装
 
-1. 从 [Releases](https://gitcode.com/dscli/dscli.vscode/releases) 下载最新 `.vsix` 文件
+1. 从 [Releases](https://github.com/dscli/dscli.vscode/releases) 下载最新 `.vsix` 文件
 2. 安装：
 
    ```bash
@@ -57,7 +57,7 @@ dscli version
 ### 方法二：从源码构建
 
 ```bash
-git clone https://gitcode.com/dscli/dscli.vscode.git
+git clone https://github.com/dscli/dscli.vscode.git
 cd dscli.vscode
 npm install
 npm run build
@@ -138,6 +138,37 @@ export PATH=$PATH:$(go env GOPATH)/bin
 2. 确认 API Key 有效且有余额
 3. 在终端测试：`echo "hello" | dscli chat`
 
+### AskUser（询问用户）不工作
+
+问题表现为 dscli 调用 `askUser` 时卡住无响应，或者编辑器虽然打开了但立即返回、用户编辑的内容没有被读取。
+
+**诊断步骤**
+
+终端运行以下命令检查环境：
+
+```bash
+echo "EDITOR=$EDITOR"
+which code
+```
+
+- 如果 `EDITOR=`（空），说明 `EDITOR` 环境变量未设置
+- 如果 `which code` 报 `code not found`，说明 VSCode 的 `code` 命令不在 PATH 中
+- 如果 `$EDITOR` 的值中不包含 `--wait`，说明编辑器缺少阻塞参数（会立即返回而非等待编辑完成）
+
+**解决方案**
+
+1. 确保 `code` 命令在 PATH 中：
+   - **macOS**：VSCode 中 `Cmd+Shift+P` → `Shell Command: Install 'code' command in PATH`
+   - **Windows**：安装 VSCode 时勾选「Add to PATH」，或手动将 VSCode 安装目录下的 `bin` 文件夹添加到系统环境变量 Path
+   - **Linux**：VSCode 通常安装时自动添加到 PATH，若没有则添加软链：`sudo ln -s /usr/share/code/bin/code /usr/local/bin/code`
+
+2. 设置 `EDITOR` 环境变量（含 `--wait` 参数）：
+   - **macOS**：终端执行 `launchctl setenv EDITOR "code --wait"`，然后重启 VSCode（或重启系统让环境变量全局生效）
+   - **Linux**：在 `~/.bashrc` 或 `~/.zshrc` 中添加 `export EDITOR="code --wait"`，然后执行 `source ~/.bashrc` 并重启 VSCode
+   - **Windows**：系统设置 → 高级系统设置 → 环境变量 → 新建 `EDITOR`，值为 `code --wait`，然后重启 VSCode
+
+设置完成后，重启 VSCode，重新测试 `askUser` 功能。
+
 ---
 
 ## 卸载
@@ -150,10 +181,10 @@ code --uninstall-extension dscli.dscli-vscode
 
 ## 许可证
 
-Apache License 2.0 — Copyright © 2025-2026 [dscli](https://gitcode.com/dscli)
+Apache License 2.0 — Copyright © 2025-2026 [dscli](https://github.com/dscli)
 
 ## 链接
 
-- [dscli 命令行工具](https://gitcode.com/dscli/dscli)
+- [dscli 命令行工具](https://github.com/dscli/dscli)
 - [DeepSeek 开放平台](https://platform.deepseek.com/)
-- [问题反馈](https://gitcode.com/dscli/dscli.vscode/issues)
+- [问题反馈](https://github.com/dscli/dscli.vscode/issues)

@@ -92,7 +92,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "package": "vsce package --baseImagesUrl https://gitcode.com/dscli/dscli.vscode/raw/main --baseContentUrl https://gitcode.com/dscli/dscli.vscode/raw/main",
+    "package": "vsce package --baseImagesUrl https://github.com/dscli/dscli.vscode/raw/main --baseContentUrl https://github.com/dscli/dscli.vscode/raw/main",
     "build": "npm run compile && npm run package"
   },
   "devDependencies": {
@@ -111,11 +111,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://gitcode.com/dscli/dscli.vscode.git"
+    "url": "https://github.com/dscli/dscli.vscode.git"
   },
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://gitcode.com/dscli/dscli.vscode/issues"
+    "url": "https://github.com/dscli/dscli.vscode/issues"
   },
-  "homepage": "https://gitcode.com/dscli/dscli.vscode#readme"
+  "homepage": "https://github.com/dscli/dscli.vscode#readme"
 }
