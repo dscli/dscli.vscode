@@ -49,7 +49,7 @@ export class ChatPanelManager {
      */
     openChat(cwd?: string): ChatPanel {
         const targetCwd = cwd ?? this.resolveDefaultCwd();
-        const key = path.normalize(targetCwd);
+        const key = path.resolve(targetCwd);
 
         // 复用已有 panel
         const existing = this.panels.get(key);

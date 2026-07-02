@@ -163,6 +163,8 @@ export class ChatPanel {
             this.panel = null;
         }
         this.currentMessages = [];
+        // 无论 WebviewPanel 是否已创建，都要通知 dispose 回调
+        this.notifyDispose();
         this.onDisposeHandlers = [];
         logger.debug('ChatPanel 已释放', { cwd: this._cwd });
     }
