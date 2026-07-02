@@ -85,9 +85,10 @@ export class ChatPanelManager {
     /**
      * 获取当前活跃 editor 所在 workspace folder 对应的 panel。
      * 常用于状态栏点击、命令面板等上下文。
+     * 在 multi-root workspace 中，如果无法确定当前活动项目，弹出快速选择。
      */
-    getOrCreateForActiveEditor(): ChatPanel {
-        const cwd = this.resolveCwdFromActiveEditor();
+    async getOrCreateForActiveEditor(): Promise<ChatPanel> {
+        const cwd = await this.resolveCwdFromActiveEditor();
         return this.openChat(cwd);
     }
 
@@ -263,13 +264,33 @@ export class ChatPanelManager {
     // -----------------------------------------------------------------------
     // 内部方法
     // -----------------------------------------------------------------------
-
     private resolveDefaultCwd(): string {
         const folders = vscode.workspace.workspaceFolders;
         return folders?.[0]?.uri.fsPath ?? process.env.HOME ?? '/';
     }
 
-    private resolveCwdFromActiveEditor(): string {
+    /**
+     * 解析当前 active editor 对应的项目路径。
+     *
+     * 优先级：
+     *   1. 单文件夹 workspace → 直接返回
+     *   2. 有 active editor → 返回其所在 workspace folder
+     *   3. 多文件夹 + 无 active editor → 弹出 quick pick 让用户选择
+     */
+    private async resolveCwdFromActiveEditor(): Promise<string> {
+        const folders = vscode.workspace.workspaceFolders;
+
+        // 无 workspace
+        if (!folders || folders.length === 0) {
+            return process.env.HOME ?? '/';
+        }
+
+        // 单文件夹 → 直接返回
+        if (folders.length === 1) {
+            return folders[0].uri.fsPath;
+        }
+
+        // 多文件夹：先检查 active editor
         const editor = vscode.window.activeTextEditor;
         if (editor) {
             const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
@@ -277,7 +298,56 @@ export class ChatPanelManager {
                 return folder.uri.fsPath;
             }
         }
-        return this.resolveDefaultCwd();
+
+        // 多文件夹 + 无 active editor 上下文 → 弹出选择
+        const picked = await this.showWorkspaceFolderPicker();
+        if (!picked) {
+            // 用户取消，回退到第一个文件夹
+            return folders[0].uri.fsPath;
+        }
+        return picked;
+    }
+
+    /**
+     * 弹出 workspace folder 快速选择。
+     * 供多文件夹 workspace 中使用。
+     */
+    private async showWorkspaceFolderPicker(): Promise<string | undefined> {
+        const folders = vscode.workspace.workspaceFolders;
+        if (!folders || folders.length === 0) return undefined;
+
+        const items: vscode.QuickPickItem[] = folders.map(f => ({
+            label: `$(folder) ${path.basename(f.uri.fsPath)}`,
+            description: this.formatCwdDisplay(f.uri.fsPath),
+            detail: f.uri.fsPath,
+        }));
+
+        // 分隔线 + "浏览其他文件夹"
+        items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+        items.push({
+            label: '$(folder-opened) 浏览其他文件夹...',
+            description: '在非 workspace 目录中打开 ChatPanel',
+            detail: '__browse__',
+        });
+
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: '选择要打开 ChatPanel 的项目文件夹',
+            ignoreFocusOut: true,
+        });
+
+        if (!picked) return undefined;
+
+        if (picked.detail === '__browse__') {
+            const selected = await vscode.window.showOpenDialog({
+                canSelectFolders: true,
+                canSelectFiles: false,
+                canSelectMany: false,
+                openLabel: '在此目录打开 ChatPanel',
+            });
+            return selected?.[0]?.fsPath;
+        }
+
+        return picked.detail;
     }
 
     private findKeyByPanel(panel: ChatPanel): string | undefined {

@@ -119,7 +119,7 @@ export class DscliExtension {
      */
     public async openChat(): Promise<void> {
         try {
-            this.chatPanelManager.getOrCreateForActiveEditor();
+            await this.chatPanelManager.getOrCreateForActiveEditor();
         } catch (error) {
             logger.error('打开聊天面板失败', error);
             vscode.window.showErrorMessage(
@@ -235,7 +235,7 @@ export class DscliExtension {
             content = document.getText();
         }
 
-        const panel = this.chatPanelManager.getOrCreateForActiveEditor();
+        const panel = await this.chatPanelManager.getOrCreateForActiveEditor();
         const contextInfo = `📄 文件: ${document.fileName}\n语言: ${document.languageId}\n行数: ${document.lineCount}\n\n请分析以下代码:\n\`\`\`${document.languageId}\n${content.slice(0, 8000)}\n\`\`\``;
         panel.sendUserMessage(contextInfo);
     }

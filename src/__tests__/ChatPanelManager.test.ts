@@ -154,7 +154,7 @@ describe('ChatPanelManager', () => {
   });
 
   describe('getOrCreateForActiveEditor', () => {
-    it('should return a panel for the active editor workspace', () => {
+    it('should return a panel for the active editor workspace', async () => {
       const { manager } = createManager({
         workspaceFolders: [{ uri: { fsPath: '/workspace/active-editor' } }],
       });
@@ -168,7 +168,7 @@ describe('ChatPanelManager', () => {
       });
 
       try {
-        const panel = manager.getOrCreateForActiveEditor();
+        const panel = await manager.getOrCreateForActiveEditor();
         expect(panel.cwd).toBe('/workspace/active-editor');
       } finally {
         (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReset();
