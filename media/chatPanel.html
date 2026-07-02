@@ -284,12 +284,12 @@
         let isProcessing = false;
         let currentStreamId = null;
 
-        // 工具栏：点击路径或"切换"按钮切换工作目录
+        // 工具栏：点击路径或"切换"按钮 → 面板导航
         toolbarPathEl.addEventListener('click', function() {
-            vscode.postMessage({ command: 'changeDirectory' });
+            vscode.postMessage({ command: 'switchPanel' });
         });
         toolbarChangeEl.addEventListener('click', function() {
-            vscode.postMessage({ command: 'changeDirectory' });
+            vscode.postMessage({ command: 'switchPanel' });
         });
 
         // 自动调整输入框高度
