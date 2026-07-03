@@ -7,15 +7,28 @@ src/**
 !*.d.ts
 tsconfig.json
 eslint.config.js
+
+# Include only essential out/ files (exclude tests)
+!out/extension.js
+!out/ui/**
+!out/services/**
+!out/utils/**
+# Do NOT include out/__tests__/**
+
+# Ignore config files at root
+jest.config.cjs
+jest.setup.cjs
+
+# Ignore docs
+docs/**
+.dscli/**
+
+# Ignore temp/log files
 *.log
 *.tmp
 *.swp
 .DS_Store
 Thumbs.db
 
-# Ignore test files
-**/*.test.*
-**/test/**
-
-# Ignore build artifacts (except out/ which contains the compiled extension)
-!out/**
+# Explicitly exclude test files (override any includes)
+out/__tests__/**

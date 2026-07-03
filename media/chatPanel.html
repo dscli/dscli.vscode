@@ -271,7 +271,15 @@
     </div>
 
     <script nonce="{{NONCE}}">
+        // 诊断：确认 VS Code API 可用
+        if (typeof acquireVsCodeApi === 'undefined') {
+            console.error('[dscli] CRITICAL: acquireVsCodeApi is not available');
+            document.body.innerHTML = '<div style="padding:20px;color:red;">❌ Webview API 不可用。请重新加载窗口。</div>';
+        }
+
         const vscode = acquireVsCodeApi();
+        console.log('[dscli] Webview 已加载，VS Code API 可用', { nonce: '{{NONCE}}'.slice(0, 4) + '...' });
+
         const messagesEl = document.getElementById('messages');
         const inputEl = document.getElementById('input');
         const sendBtn = document.getElementById('sendBtn');
@@ -286,12 +294,13 @@
 
         // 工具栏：点击路径或"切换"按钮 → 面板导航
         toolbarPathEl.addEventListener('click', function() {
+            console.log('[dscli] 工具栏路径点击 → switchPanel');
             vscode.postMessage({ command: 'switchPanel' });
         });
         toolbarChangeEl.addEventListener('click', function() {
+            console.log('[dscli] 切换按钮点击 → switchPanel');
             vscode.postMessage({ command: 'switchPanel' });
         });
-
         // 自动调整输入框高度
         inputEl.addEventListener('input', () => {
             inputEl.style.height = 'auto';

@@ -94,7 +94,8 @@ export class ChatPanel {
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [],
+                // 不加 localResourceRoots，默认允许全部本地资源
+                // 当前不需要加载本地图片/字体
             },
         );
 
@@ -368,18 +369,24 @@ export class ChatPanel {
 
         this.panel.webview.onDidReceiveMessage(
             async (message) => {
-                switch (message.command) {
-                    case 'sendMessage':
-                        await this.handleUserMessage(message.content);
-                        break;
-                    case 'interrupt':
-                        this.interruptProcess();
-                        this.addMessage('system', '⏹ 已中断', false, false);
-                        break;
-                    case 'switchPanel':
-                        // "切换"按钮现在触发面板导航
-                        await vscode.commands.executeCommand('dscli.listChats');
-                        break;
+                try {
+                    switch (message.command) {
+                        case 'sendMessage':
+                            await this.handleUserMessage(message.content as string);
+                            break;
+                        case 'interrupt':
+                            this.interruptProcess();
+                            this.addMessage('system', '⏹ 已中断', false, false);
+                            break;
+                        case 'switchPanel':
+                            // "切换"按钮现在触发面板导航
+                            await vscode.commands.executeCommand('dscli.listChats');
+                            break;
+                    }
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    logger.error('ChatPanel 消息处理出错', { command: message.command, error: msg });
+                    vscode.window.showErrorMessage(`ChatPanel 错误: ${msg}`);
                 }
             },
             undefined,
