@@ -33,6 +33,10 @@ jest.mock('vscode', () => {
       getWorkspaceFolder: jest.fn(),
       workspaceFolders: []
     },
+    QuickPickItemKind: {
+      Separator: -1,
+      Default: 0,
+    },
     ExtensionContext: jest.fn(),
     StatusBarAlignment: {
       Left: 1,

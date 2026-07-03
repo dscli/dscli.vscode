@@ -134,14 +134,19 @@ export class ChatPanelManager {
     /**
      * 弹出快速选择，让用户选择：
      * 1. 一个已打开的面板 → 切换聚焦
-     * 2. "浏览其他文件夹..." → 打开新面板
+     * 2. 当前 workspace 中未打开面板的文件夹 → 新建面板
+     * 3. "浏览其他文件夹..." → 打开文件对话框选择目录
      *
+     * 与 showWorkspaceFolderPicker() 保持一致的 UE，
      * 供 ChatPanel 的 "切换" 按钮调用。
      */
     async showPanelPicker(): Promise<void> {
         const items: vscode.QuickPickItem[] = [];
 
-        // 列出所有活跃 panel
+        const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+        const openCwds = new Set(this.panels.keys());
+
+        // 1. 列出所有活跃 panel
         for (const [cwd, panel] of this.panels) {
             items.push({
                 label: `$(hubot) dscli: ${panel.projectName}`,
@@ -150,12 +155,25 @@ export class ChatPanelManager {
             });
         }
 
-        // 分隔线
-        if (items.length > 0) {
-            items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+        // 2. 列出 workspace 中尚未打开 panel 的文件夹
+        const unopenedFolders = workspaceFolders.filter(
+            f => !openCwds.has(path.resolve(f.uri.fsPath))
+        );
+        if (unopenedFolders.length > 0) {
+            if (items.length > 0) {
+                items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+            }
+            for (const folder of unopenedFolders) {
+                items.push({
+                    label: `$(folder) ${path.basename(folder.uri.fsPath)}`,
+                    description: this.formatCwdDisplay(folder.uri.fsPath),
+                    detail: folder.uri.fsPath,
+                });
+            }
         }
 
-        // "浏览其他文件夹" 选项
+        // 分隔线 + "浏览其他文件夹"
+        items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
         items.push({
             label: '$(folder-opened) 浏览其他文件夹...',
             description: '在新目录中打开 ChatPanel',
@@ -182,7 +200,8 @@ export class ChatPanelManager {
                 this.openChat(selected[0].fsPath);
             }
         } else if (picked.detail) {
-            this.focusPanel(picked.detail);
+            // openChat 兼顾复用（已存在时 reveal）和新建
+            this.openChat(picked.detail);
         }
     }
 
