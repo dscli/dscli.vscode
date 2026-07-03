@@ -1,12 +1,11 @@
 /**
  * dscli VSCode扩展 - 精简版入口
- * 
+ *
  * 核心功能：
- * 1. ChatPanel - 聊天面板，通过 dscli CLI 与 DeepSeek 交互
+ * 1. ChatPanelManager - 多实例聊天面板管理
  * 2. SecretService - API Key 安全管理
  * 3. ConfigService - 配置管理
  */
-
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { execFile } from 'child_process';
@@ -15,7 +14,7 @@ import { logger } from './utils/logger';
 import { ConfigService } from './services/ConfigService';
 import { SecretService } from './services/SecretService';
 import { ProcessService } from './services/ProcessService';
-import { ChatPanel } from './ui/ChatPanel';
+import { ChatPanelManager } from './ui/ChatPanelManager';
 
 const execFileAsync = promisify(execFile);
 
@@ -27,7 +26,7 @@ export class DscliExtension {
     private configService: ConfigService;
     private secretService: SecretService;
     private processService: ProcessService;
-    private chatPanel: ChatPanel | null = null;
+    private chatPanelManager: ChatPanelManager;
 
     private statusBarItem: vscode.StatusBarItem;
     private isInitialized = false;
@@ -37,6 +36,12 @@ export class DscliExtension {
         this.configService = new ConfigService();
         this.secretService = new SecretService(context);
         this.processService = new ProcessService();
+        this.chatPanelManager = new ChatPanelManager(
+            this.processService,
+            this.configService,
+            this.secretService,
+            context.extensionUri,
+        );
 
         // 状态栏
         this.statusBarItem = vscode.window.createStatusBarItem(
@@ -76,7 +81,6 @@ export class DscliExtension {
 
             logger.info('dscli 扩展初始化完成');
 
-
         } catch (error) {
             logger.error('扩展初始化失败', error);
             this.isInitialized = true;
@@ -96,8 +100,6 @@ export class DscliExtension {
         }
     }
 
-
-
     /**
      * 更新状态栏
      */
@@ -113,25 +115,39 @@ export class DscliExtension {
     }
 
     /**
-     * 打开聊天面板
+     * 打开聊天面板 — 基于当前 active editor 所在 workspace。
      */
     public async openChat(): Promise<void> {
         try {
-            if (!this.chatPanel) {
-                this.chatPanel = new ChatPanel(
-                    this.processService,
-                    this.configService,
-                    this.secretService,
-                    this.context
-                );
-            }
-            this.chatPanel.show();
+            await this.chatPanelManager.getOrCreateForActiveEditor();
         } catch (error) {
             logger.error('打开聊天面板失败', error);
             vscode.window.showErrorMessage(
                 `打开聊天面板失败: ${error instanceof Error ? error.message : String(error)}`
             );
         }
+    }
+
+    /**
+     * 为指定文件夹打开聊天面板。
+     */
+    public async openChatForFolder(): Promise<void> {
+        const selected = await vscode.window.showOpenDialog({
+            canSelectFolders: true,
+            canSelectFiles: false,
+            canSelectMany: false,
+            openLabel: '在此目录打开 ChatPanel',
+        });
+        if (selected?.[0]) {
+            this.chatPanelManager.openChat(selected[0].fsPath);
+        }
+    }
+
+    /**
+     * 列出所有活跃面板 — 选择后聚焦。
+     */
+    public async listChats(): Promise<void> {
+        await this.chatPanelManager.showPanelPicker();
     }
 
     /**
@@ -145,6 +161,7 @@ export class DscliExtension {
         message += `扩展状态: ${this.isInitialized ? '✅ 已激活' : '❌ 未激活'}\n`;
         message += `API Key: ${hasApiKey ? '✅ 已配置' : '⚠️ 未配置'}\n`;
         message += `dscli 路径: ${config.executablePath}\n`;
+        message += `活跃面板: ${this.chatPanelManager.listPanels().length} 个\n`;
 
         try {
             const result = await execFileAsync(config.executablePath, ['version'], {
@@ -157,7 +174,9 @@ export class DscliExtension {
         }
 
         message += `\n📋 可用命令:\n`;
-        message += `• dscli: Start Chat - 打开聊天面板\n`;
+        message += `• dscli: Open Chat - 打开当前项目的聊天面板\n`;
+        message += `• dscli: Open Chat for Folder - 为指定目录打开聊天面板\n`;
+        message += `• dscli: List Chats - 列出并切换活跃面板\n`;
         message += `• dscli: Set API Key - 配置 API Key\n`;
         message += `• dscli: Check System Status - 本页面\n`;
 
@@ -182,14 +201,10 @@ export class DscliExtension {
     }
 
     /**
-     * 清空聊天历史
+     * 清空对话历史
      */
     public async clearHistory(): Promise<void> {
-        if (this.chatPanel) {
-            this.chatPanel.dispose();
-            this.chatPanel = null;
-        }
-        vscode.window.showInformationMessage('聊天历史已清空');
+        await this.chatPanelManager.handleClearHistory();
     }
 
     /**
@@ -220,11 +235,9 @@ export class DscliExtension {
             content = document.getText();
         }
 
-        await this.openChat();
-        if (this.chatPanel) {
-            const contextInfo = `📄 文件: ${document.fileName}\n语言: ${document.languageId}\n行数: ${document.lineCount}\n\n请分析以下代码:\n\`\`\`${document.languageId}\n${content.slice(0, 8000)}\n\`\`\``;
-            this.chatPanel.sendUserMessage(contextInfo);
-        }
+        const panel = await this.chatPanelManager.getOrCreateForActiveEditor();
+        const contextInfo = `📄 文件: ${document.fileName}\n语言: ${document.languageId}\n行数: ${document.lineCount}\n\n请分析以下代码:\n\`\`\`${document.languageId}\n${content.slice(0, 8000)}\n\`\`\``;
+        panel.sendUserMessage(contextInfo);
     }
 
     /**
@@ -232,10 +245,7 @@ export class DscliExtension {
      */
     public async dispose(): Promise<void> {
         logger.info('清理扩展资源...');
-        if (this.chatPanel) {
-            this.chatPanel.dispose();
-            this.chatPanel = null;
-        }
+        this.chatPanelManager.dispose();
         this.processService.dispose();
         this.isInitialized = false;
     }
@@ -255,6 +265,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<DscliE
         // 注册命令
         const commands = [
             vscode.commands.registerCommand('dscli.openChat', () => extension.openChat()),
+            vscode.commands.registerCommand('dscli.openChatForFolder', () => extension.openChatForFolder()),
+            vscode.commands.registerCommand('dscli.listChats', () => extension.listChats()),
             vscode.commands.registerCommand('dscli.analyzeFile', () => extension.analyzeCurrentFile()),
             vscode.commands.registerCommand('dscli.setApiKey', () => extension.setApiKey()),
             vscode.commands.registerCommand('dscli.checkStatus', () => extension.checkStatus()),

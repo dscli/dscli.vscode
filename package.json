@@ -2,7 +2,7 @@
   "name": "dscli-vscode",
   "displayName": "dscli - DeepSeek CLI for VSCode",
   "description": "VSCode extension for dscli - AI-enhanced developer toolbox with DeepSeek integration",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "dscli",
   "engines": {
     "vscode": "^1.85.0"
@@ -34,7 +34,7 @@
     "commands": [
       {
         "command": "dscli.openChat",
-        "title": "打开 dscli 问答面板",
+        "title": "打开 dscli 聊天面板",
         "category": "dscli",
         "icon": {
           "light": "images/chat-light.svg",
@@ -42,31 +42,50 @@
         }
       },
       {
+        "command": "dscli.openChatForFolder",
+        "title": "为指定文件夹打开聊天面板",
+        "category": "dscli"
+      },
+      {
+        "command": "dscli.listChats",
+        "title": "列出并切换活跃面板",
+        "category": "dscli"
+      },
+      {
         "command": "dscli.analyzeFile",
-        "title": "dscli: 分析当前文件",
+        "title": "分析当前文件",
         "category": "dscli"
       },
       {
         "command": "dscli.setApiKey",
-        "title": "dscli: Set API Key",
+        "title": "Set API Key",
         "category": "dscli"
       },
       {
         "command": "dscli.checkStatus",
-        "title": "dscli: 检查系统状态",
+        "title": "检查系统状态",
         "category": "dscli"
       },
       {
         "command": "dscli.clearHistory",
-        "title": "dscli: 清空对话历史",
+        "title": "清空对话历史",
         "category": "dscli"
       },
       {
         "command": "dscli.interrupt",
-        "title": "dscli: 中断当前操作",
+        "title": "中断当前操作",
         "category": "dscli"
       }
     ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "dscli.openChat",
+          "when": "explorerResourceIsFolder",
+          "group": "dscli"
+        }
+      ]
+    },
     "configuration": {
       "title": "dscli",
       "properties": {
