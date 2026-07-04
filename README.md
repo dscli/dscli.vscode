@@ -145,6 +145,12 @@ export PATH=$PATH:$(go env GOPATH)/bin
 
 如果仍遇到问题，请按以下步骤排查：
 
+**自动修复**
+
+从 v0.1.x 开始，dscli.vscode 扩展会在启动 dscli 进程时**自动检测当前 VSCode 实例的 `code` CLI 路径**并设置 `EDITOR` 环境变量。如果检测成功，`askUser` 应该直接可用，无需手动配置。
+
+如果自动检测失败（例如 VSCode 安装结构特殊），请按以下步骤排查：
+
 **诊断步骤**
 
 终端运行以下命令检查环境：
@@ -158,7 +164,7 @@ which code
 - 如果 `which code` 报 `code not found`，说明 VSCode 的 `code` 命令不在 PATH 中
 - 如果 `$EDITOR` 的值中不包含 `--wait`，说明编辑器缺少阻塞参数（会立即返回而非等待编辑完成）
 
-**解决方案**
+**手动解决方案**
 
 1. 确保 `code` 命令在 PATH 中：
    - **macOS**：VSCode 中 `Cmd+Shift+P` → `Shell Command: Install 'code' command in PATH`
@@ -172,7 +178,14 @@ which code
 
 设置完成后，重启 VSCode，重新测试 `askUser` 功能。
 
----
+如果想使用其他编辑器（如 vim、nano），设置 `EDITOR` 环境变量即可：
+
+```bash
+# 使用 vim（需含阻塞参数）
+export EDITOR="vim -f"
+```
+
+扩展的自动检测会优先保留系统已有的 `EDITOR` 配置，不会覆盖用户手动设置的值。
 
 ## 卸载
 

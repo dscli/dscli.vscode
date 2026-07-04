@@ -7,6 +7,7 @@
  * HTML/CSS/JS 模板位于 media/chatPanel.html，通过 fs.readFileSync 加载。
  */
 import * as vscode from 'vscode';
+import * as child_process from 'child_process';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -108,12 +109,12 @@ export class ChatPanel {
             this.notifyDispose();
         });
 
-        // 发送初始工作目录和欢迎消息
+        // 发送初始工作目录和欢迎消息，然后加载历史聊天记录
         setTimeout(async () => {
             this.broadcastCwd();
 
-            // TODO: 从 dscli 数据库加载历史记录（后续 PR 实现）
-            // await this.loadHistoryFromDscli();
+            // 从 dscli 数据库加载当前项目的聊天历史
+            await this.loadHistoryFromDscli();
 
             const hasApiKey = !!(await this.secretService.getApiKey());
             const welcome = hasApiKey
@@ -137,6 +138,90 @@ export class ChatPanel {
     reveal(): void {
         if (this.panel) {
             this.panel.reveal();
+        }
+    }
+
+    /**
+     * 从 dscli 数据库加载当前项目的聊天历史记录。
+     * 通过 `dscli history list --json` 命令获取历史消息并显示在面板中。
+     */
+    private async loadHistoryFromDscli(): Promise<void> {
+        const executablePath = this.configService.getConfig().executablePath;
+
+        try {
+            const stdout = await new Promise<string>((resolve, reject) => {
+                child_process.execFile(
+                    executablePath,
+                    ['history', 'list', '--json'],
+                    {
+                        cwd: this._cwd,
+                        maxBuffer: 10 * 1024 * 1024,
+                        timeout: 15000,
+                    },
+                    (error, stdout, _stderr) => {
+                        if (error) {
+                            reject(error);
+                            return;
+                        }
+                        resolve(stdout);
+                    },
+                );
+            });
+
+            const messages = JSON.parse(stdout) as Array<{
+                id: number;
+                role: string;
+                content: string;
+                reasoning_content?: string;
+                tool_call_id?: string;
+                created_at: string;
+            }>;
+
+            for (const msg of messages) {
+                // 跳过 tool 角色的内部消息（工具调用结果）
+                if (msg.role === 'tool') {
+                    continue;
+                }
+
+                // 跳过空内容（纯工具调用 assistant 消息）
+                const content = msg.content || msg.reasoning_content || '';
+                if (!content.trim()) {
+                    continue;
+                }
+
+                // 校验角色有效性
+                const role = (msg.role === 'assistant' || msg.role === 'user' || msg.role === 'system')
+                    ? msg.role : 'system';
+
+                const chatMsg: ChatMessage = {
+                    id: `hist_${msg.id}`,
+                    role: role as ChatMessage['role'],
+                    content: content,
+                    timestamp: new Date(msg.created_at),
+                    isStreaming: false,
+                    isError: false,
+                };
+
+                this.currentMessages.push(chatMsg);
+                this.postMessage('addMessage', {
+                    id: chatMsg.id,
+                    role: chatMsg.role,
+                    content: chatMsg.content,
+                    isStreaming: false,
+                    isError: false,
+                });
+            }
+
+            logger.debug('加载历史记录', {
+                count: messages.filter(m => m.role !== 'tool').length,
+                cwd: this._cwd,
+            });
+        } catch (error: any) {
+            // 无历史记录或 dscli 版本不支持 --json 时静默忽略
+            logger.debug('加载历史记录跳过（首次使用或旧版 dscli）', {
+                error: error?.message,
+                cwd: this._cwd,
+            });
         }
     }
 
