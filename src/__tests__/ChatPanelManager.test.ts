@@ -6,6 +6,7 @@
  *   2. 生命周期清理（dispose/close）
  *   3. 面板列表查询
  *   4. dispose 回调自动清理
+ *   5. interruptActive — 中断指定面板进程
  *
  * ChatPanel 被完整 mock，聚焦 Manager 的管理逻辑。
  */
@@ -44,6 +45,9 @@ jest.mock('../ui/ChatPanel', () => {
         }),
         sendUserMessage: jest.fn(),
         getMessages: jest.fn().mockReturnValue([]),
+        // 新增：进程状态与中断
+        isProcessing: false,
+        interrupt: jest.fn(),
       };
     }),
   };
@@ -235,6 +239,58 @@ describe('ChatPanelManager', () => {
     it('should do nothing for unknown path', () => {
       const { manager } = createManager();
       expect(() => manager.focusPanel('/nonexistent')).not.toThrow();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 新增：interruptActive 测试
+  // -----------------------------------------------------------------------
+  describe('interruptActive', () => {
+    it('should interrupt the processing panel', () => {
+      const { manager } = createManager();
+      const panel = manager.openChat('/tmp/project-a') as any;
+
+      panel.isProcessing = true;
+
+      const result = manager.interruptActive();
+      expect(result).toBe(true);
+      expect(panel.interrupt).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return false when no panel is processing', () => {
+      const { manager } = createManager();
+      const panelA = manager.openChat('/tmp/project-a') as any;
+      const panelB = manager.openChat('/tmp/project-b') as any;
+
+      panelA.isProcessing = false;
+      panelB.isProcessing = false;
+
+      const result = manager.interruptActive();
+      expect(result).toBe(false);
+      expect(panelA.interrupt).not.toHaveBeenCalled();
+      expect(panelB.interrupt).not.toHaveBeenCalled();
+    });
+
+    it('should return false when no panels exist', () => {
+      const { manager } = createManager();
+      const result = manager.interruptActive();
+      expect(result).toBe(false);
+    });
+
+    it('should interrupt only one panel when multiple are processing', () => {
+      const { manager } = createManager();
+      const panelA = manager.openChat('/tmp/project-a') as any;
+      const panelB = manager.openChat('/tmp/project-b') as any;
+
+      panelA.isProcessing = true;
+      panelB.isProcessing = true;
+
+      const result = manager.interruptActive();
+      expect(result).toBe(true);
+      // At least one panel should have been interrupted
+      const interruptCalls = (panelA.interrupt.mock.calls.length > 0 ? 1 : 0) +
+                             (panelB.interrupt.mock.calls.length > 0 ? 1 : 0);
+      expect(interruptCalls).toBe(1);
     });
   });
 

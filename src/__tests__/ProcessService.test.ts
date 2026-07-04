@@ -86,6 +86,41 @@ describe('ProcessService', () => {
 
       expect(exitCode).toBe(42);
     });
+
+    it('should support multiple concurrent processes', async () => {
+      const results: string[] = [];
+
+      const p1 = new Promise<void>((resolve, reject) => {
+        service.createProcess({
+          command: 'sh',
+          args: ['-c', 'echo proc1'],
+          cwd: '/tmp',
+          onData: (data) => { results.push('p1:' + data.trim()); },
+          onExit: (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`p1 exit code ${code}`));
+          },
+        });
+      });
+
+      const p2 = new Promise<void>((resolve, reject) => {
+        service.createProcess({
+          command: 'sh',
+          args: ['-c', 'echo proc2'],
+          cwd: '/tmp',
+          onData: (data) => { results.push('p2:' + data.trim()); },
+          onExit: (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`p2 exit code ${code}`));
+          },
+        });
+      });
+
+      await Promise.all([p1, p2]);
+
+      expect(results).toContain('p1:proc1');
+      expect(results).toContain('p2:proc2');
+    });
   });
 
   describe('killProcess', () => {

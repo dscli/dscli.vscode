@@ -16,7 +16,8 @@ import { logger } from '../utils/logger';
 import { ProcessService } from '../services/ProcessService';
 import { ConfigService } from '../services/ConfigService';
 import { SecretService } from '../services/SecretService';
-import { resolveEditorValue, getVscodeCliDir } from '../utils/env';
+import { resolveEditorValue } from '../utils/env';
+
 export interface ChatMessage {
     id: string;
     role: 'user' | 'assistant' | 'system';
@@ -77,6 +78,20 @@ export class ChatPanel {
     /** 获取当前消息列表（副本） */
     getMessages(): ChatMessage[] {
         return [...this.currentMessages];
+    }
+
+    /** 当前是否有正在处理的 dscli 进程 */
+    get isProcessing(): boolean {
+        return this.currentProcessId !== null;
+    }
+
+    /**
+     * 中断当前处理进程。
+     * 安全 — 无可中断进程时不产生副作用。
+     */
+    interrupt(): void {
+        this.interruptProcess();
+        this.addMessage('system', '⏹ 已中断', false, false);
     }
 
     /**
@@ -325,36 +340,14 @@ export class ChatPanel {
             this.postMessage('setStatus', { content: `⏳ 正在思考... (${elapsed}s)` });
         }, 1000);
         try {
-            // 构建子进程环境：自动注入 EDITOR 以支持 AskUser
+            // 构建子进程环境：自动注入 EDITOR + API Key
+            //
+            // ⚠️ process.env.PATH 已在 extension 激活阶段一次性设置（setupProcessEnv），
+            //    不在每次消息处理时修改全局 PATH，避免并发消息的竞态条件。
             const env: NodeJS.ProcessEnv = { DEEPSEEK_API_KEY: apiKey };
             const editorVal = resolveEditorValue(vscode.env.appRoot);
             if (editorVal) {
                 env.EDITOR = editorVal;
-
-                // 注入 code CLI 目录到 PATH，确保 Go 子进程能通过 exec.LookPath("code") 找到
-                //
-                // ⚠️ 直接修改 process.env.PATH（而非 options.env.PATH）：
-                // macOS Code Helper (Plugin) 沙箱中 child_process.spawn 的
-                // `env: { ...process.env, ...options.env }` spread 对 PATH
-                // 的 override 不可靠。直接修改 process.env 确保子进程继承到。
-                const codeDir = getVscodeCliDir(vscode.env.appRoot);
-                if (codeDir) {
-                    const sep = path.delimiter;
-                    const currentPath = process.env.PATH || '';
-                    if (!currentPath.split(sep).filter(Boolean).includes(codeDir)) {
-                        process.env.PATH = codeDir + sep + currentPath;
-                        logger.debug('AskUser: 注入 code CLI 目录到 process.env.PATH', { codeDir });
-                    }
-
-                    // Windows: Go 的 exec.LookPath 也检查 Path 变量
-                    if (process.platform === 'win32' && process.env.Path) {
-                        const winSep = path.delimiter;
-                        const winDirs = (process.env.Path || '').split(winSep).filter(Boolean);
-                        if (!winDirs.includes(codeDir)) {
-                            process.env.Path = codeDir + sep + (process.env.Path || '');
-                        }
-                    }
-                }
 
                 logger.info('AskUser: 已设置 EDITOR', { editor: editorVal });
             } else {
