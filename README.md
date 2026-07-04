@@ -141,6 +141,9 @@ export PATH=$PATH:$(go env GOPATH)/bin
 ### AskUser（询问用户）不工作
 
 问题表现为 dscli 调用 `askUser` 时卡住无响应，或者编辑器虽然打开了但立即返回、用户编辑的内容没有被读取。
+**v0.4.0+ 增强**：扩展现在会在启动 dscli 时自动检测 VSCode CLI (`code`) 路径并设置 `EDITOR` 环境变量，大多数情况下无需手动配置即可正常使用 AskUser。
+
+如果仍遇到问题，请按以下步骤排查：
 
 **诊断步骤**
 
@@ -163,7 +166,7 @@ which code
    - **Linux**：VSCode 通常安装时自动添加到 PATH，若没有则添加软链：`sudo ln -s /usr/share/code/bin/code /usr/local/bin/code`
 
 2. 设置 `EDITOR` 环境变量（含 `--wait` 参数）：
-   - **macOS**：终端执行 `launchctl setenv EDITOR "code --wait"`，然后重启 VSCode（或重启系统让环境变量全局生效）
+   - **macOS**：在 `~/.zshrc` 或 `~/.bash_profile` 中添加 `export EDITOR="code --wait"`，然后执行 `source ~/.zshrc` 并重启 VSCode
    - **Linux**：在 `~/.bashrc` 或 `~/.zshrc` 中添加 `export EDITOR="code --wait"`，然后执行 `source ~/.bashrc` 并重启 VSCode
    - **Windows**：系统设置 → 高级系统设置 → 环境变量 → 新建 `EDITOR`，值为 `code --wait`，然后重启 VSCode
 
