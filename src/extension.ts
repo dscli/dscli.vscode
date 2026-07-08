@@ -5,6 +5,7 @@
  * 1. ChatPanelManager - 多实例聊天面板管理
  * 2. SecretService - API Key 安全管理
  * 3. ConfigService - 配置管理
+ * 4. setupProcessEnv - 一次性进程环境初始化（AskUser PATH）
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -15,6 +16,7 @@ import { ConfigService } from './services/ConfigService';
 import { SecretService } from './services/SecretService';
 import { ProcessService } from './services/ProcessService';
 import { ChatPanelManager } from './ui/ChatPanelManager';
+import { resolveEditorValue, getVscodeCliDir } from './utils/env';
 
 const execFileAsync = promisify(execFile);
 
@@ -73,6 +75,15 @@ export class DscliExtension {
                 logger.warn('ProcessService 初始化失败', e);
             }
 
+            // 一次性设置 AskUser 所需的进程环境（process.env.PATH）
+            // 必须在任何 dscli 子进程启动前执行
+            try {
+                this.setupProcessEnv();
+                logger.info('AskUser 环境初始化完成');
+            } catch (e) {
+                logger.warn('AskUser 环境初始化失败', e);
+            }
+
             this.isInitialized = true;
             this.updateStatusBar();
 
@@ -84,6 +95,52 @@ export class DscliExtension {
         } catch (error) {
             logger.error('扩展初始化失败', error);
             this.isInitialized = true;
+        }
+    }
+
+    /**
+     * 一次性设置子进程环境变量，支持 AskUser 功能。
+     *
+     * 将 VSCode CLI (code) 所在目录注入 process.env.PATH，使 dscli 的
+     * AskUser 功能能通过 exec.LookPath("code") 找到 code CLI。
+     *
+     * 仅在扩展激活时执行一次，不在每次消息处理时修改全局 PATH，
+     * 避免并发消息的竞态条件。
+     */
+    private setupProcessEnv(): void {
+        const appRoot = vscode.env.appRoot;
+        if (!appRoot) {
+            logger.debug('AskUser: vscode.env.appRoot 为空，跳过 PATH 设置');
+            return;
+        }
+
+        const editorVal = resolveEditorValue(appRoot);
+        if (!editorVal) {
+            logger.debug('AskUser: code CLI 不可用，跳过 PATH 设置');
+            return;
+        }
+
+        const codeDir = getVscodeCliDir(appRoot);
+        if (!codeDir) {
+            logger.debug('AskUser: code CLI 目录不可用');
+            return;
+        }
+
+        const sep = path.delimiter;
+
+        // Unix PATH
+        const currentPath = process.env.PATH || '';
+        if (!currentPath.split(sep).filter(Boolean).includes(codeDir)) {
+            process.env.PATH = codeDir + sep + currentPath;
+            logger.debug('AskUser: 注入 code CLI 目录到 process.env.PATH', { codeDir });
+        }
+
+        // Windows: Go 的 exec.LookPath 也会检查 Path 变量
+        if (process.platform === 'win32' && process.env.Path) {
+            const winDirs = (process.env.Path || '').split(sep).filter(Boolean);
+            if (!winDirs.includes(codeDir)) {
+                process.env.Path = codeDir + sep + (process.env.Path || '');
+            }
         }
     }
 
@@ -208,11 +265,16 @@ export class DscliExtension {
     }
 
     /**
-     * 中断当前进程
+     * 中断当前活跃面板的处理进程。
+     * 不再杀死所有进程 — 只中断用户当前正在交互的面板。
      */
     public async interrupt(): Promise<void> {
-        this.processService.dispose();
-        vscode.window.showInformationMessage('当前操作已中断');
+        const interrupted = this.chatPanelManager.interruptActive();
+        if (interrupted) {
+            vscode.window.showInformationMessage('已中断当前对话');
+        } else {
+            logger.debug('interrupt: 没有正在处理的面板');
+        }
     }
 
     /**

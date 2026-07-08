@@ -250,6 +250,15 @@
         .hidden {
             display: none;
         }
+
+        /* 历史加载指示器 */
+        #history-loader {
+            text-align: center;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            padding: 8px;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -261,6 +270,7 @@
         <button id="toolbar-change">切换</button>
     </div>
     <div id="messages"></div>
+    <div id="history-loader" class="hidden"></div>
     <div id="status"></div>
     <div class="input-area">
         <textarea id="input" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
@@ -288,9 +298,15 @@
         const cwdTextEl = document.getElementById('cwdText');
         const toolbarPathEl = document.getElementById('toolbar-path');
         const toolbarChangeEl = document.getElementById('toolbar-change');
+        const historyLoaderEl = document.getElementById('history-loader');
 
         let isProcessing = false;
         let currentStreamId = null;
+
+        // 历史滚动加载状态
+        let isLoadingHistory = false;
+        let hasMoreHistory = true;
+        let historyScrollTimer = null;
 
         // 工具栏：点击路径或"切换"按钮 → 面板导航
         toolbarPathEl.addEventListener('click', function() {
@@ -324,6 +340,25 @@
         sendBtn.addEventListener('click', () => send());
         stopBtn.addEventListener('click', () => stop());
 
+        // Scroll-to-top 加载更多历史（防抖 300ms）
+        messagesEl.addEventListener('scroll', function() {
+            if (!hasMoreHistory || isLoadingHistory) return;
+
+            if (historyScrollTimer) {
+                clearTimeout(historyScrollTimer);
+            }
+
+            historyScrollTimer = setTimeout(function() {
+                // 距离顶部不足 100px 时触发加载
+                if (messagesEl.scrollTop < 100) {
+                    isLoadingHistory = true;
+                    historyLoaderEl.textContent = '⏳ 加载更多历史...';
+                    historyLoaderEl.classList.remove('hidden');
+                    vscode.postMessage({ command: 'loadMoreHistory' });
+                }
+            }, 300);
+        });
+
         function send() {
             const content = inputEl.value.trim();
             if (!content || isProcessing) { return; }
@@ -349,12 +384,17 @@
             return labels[role] || role;
         }
 
-        function appendMessage(role, content, isError) {
+        function createMessageElement(role, content, isError) {
             var div = document.createElement('div');
             div.className = 'message ' + role + '-message' + (isError ? ' error-message' : '');
             div.innerHTML =
                 '<div class="message-header"><span>' + escapeHtml(getRoleLabel(role)) + '</span><span>' + new Date().toLocaleTimeString() + '</span></div>' +
                 '<div class="message-content">' + formatContent(content) + '</div>';
+            return div;
+        }
+
+        function appendMessage(role, content, isError) {
+            var div = createMessageElement(role, content, isError);
             messagesEl.appendChild(div);
             scrollToBottom();
         }
@@ -414,6 +454,10 @@
             messagesEl.scrollTop = messagesEl.scrollHeight;
         }
 
+        function scrollToTop() {
+            messagesEl.scrollTop = 0;
+        }
+
         function setProcessing(processing) {
             isProcessing = processing;
             sendBtn.disabled = processing;
@@ -456,9 +500,41 @@
                     setStatus(msg.content);
                     break;
 
+                case 'clearMessages':
+                    messagesEl.innerHTML = '';
+                    break;
+
                 case 'setCwd':
                     cwdTextEl.textContent = msg.path;
                     cwdTextEl.title = msg.fullPath;
+                    break;
+
+                case 'prependMessages':
+                    // 在现有消息之前插入更早的历史
+                    const scrollHeightBefore = messagesEl.scrollHeight;
+                    const fragment = document.createDocumentFragment();
+                    for (const m of msg.messages) {
+                        const div = createMessageElement(m.role, m.content, m.isError);
+                        fragment.appendChild(div);
+                    }
+                    messagesEl.insertBefore(fragment, messagesEl.firstChild);
+                    // 保持视觉位置不变（prepend 后 scrollTop 自动偏移）
+                    const scrollHeightAfter = messagesEl.scrollHeight;
+                    messagesEl.scrollTop = scrollHeightAfter - scrollHeightBefore;
+                    isLoadingHistory = false;
+                    historyLoaderEl.classList.add('hidden');
+                    break;
+
+                case 'hasMoreHistory':
+                    hasMoreHistory = msg.hasMore;
+                    if (!msg.hasMore) {
+                        historyLoaderEl.textContent = '📜 已加载全部历史记录';
+                        // 2 秒后隐藏
+                        setTimeout(function() {
+                            historyLoaderEl.classList.add('hidden');
+                        }, 2000);
+                    }
+                    isLoadingHistory = false;
                     break;
             }
         });

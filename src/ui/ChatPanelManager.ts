@@ -5,7 +5,8 @@
  * 职责：
  *   1. 按项目路径管理 ChatPanel 的创建、复用、关闭
  *   2. 提供面板列表查询和导航
- *   3. 处理生命周期清理
+ *   3. 中断活跃面板的处理进程
+ *   4. 处理生命周期清理
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -27,6 +28,8 @@ export class ChatPanelManager {
     private configService: ConfigService;
     private secretService: SecretService;
     private extensionUri: vscode.Uri;
+    /** 追踪最近一次被聚焦的面板，供 interruptActive 定位目标 */
+    private activePanel: ChatPanel | null = null;
 
     constructor(
         processService: ProcessService,
@@ -54,6 +57,7 @@ export class ChatPanelManager {
         // 复用已有 panel
         const existing = this.panels.get(key);
         if (existing) {
+            this.activePanel = existing;
             existing.reveal();
             return existing;
         }
@@ -72,11 +76,15 @@ export class ChatPanelManager {
             const disposedKey = this.findKeyByPanel(panel);
             if (disposedKey) {
                 this.panels.delete(disposedKey);
+                if (this.activePanel === panel) {
+                    this.activePanel = null;
+                }
                 logger.info('ChatPanel 已从管理器移除', { cwd: disposedKey });
             }
         });
 
         this.panels.set(key, panel);
+        this.activePanel = panel;
         panel.show();
         logger.info('ChatPanel 已创建', { cwd: key, total: this.panels.size });
         return panel;
@@ -101,6 +109,9 @@ export class ChatPanelManager {
         if (panel) {
             panel.dispose();
             this.panels.delete(key);
+            if (this.activePanel === panel) {
+                this.activePanel = null;
+            }
             logger.info('ChatPanel 已关闭', { cwd: key });
         }
     }
@@ -127,8 +138,37 @@ export class ChatPanelManager {
         const key = path.normalize(cwd);
         const panel = this.panels.get(key);
         if (panel) {
+            this.activePanel = panel;
             panel.reveal();
         }
+    }
+
+    /**
+     * 中断活跃面板的 dscli 进程。
+     *
+     * 遍历所有面板找到第一个正在处理的面板并中断。
+     * @returns true 如果成功中断了一个进程
+     */
+    interruptActive(): boolean {
+        // 优先中断最近活跃的面板
+        if (this.activePanel?.isProcessing) {
+            this.activePanel.interrupt();
+            logger.info('已中断活跃面板进程', { cwd: this.activePanel.cwd });
+            return true;
+        }
+
+        // 退回到遍历所有面板
+        for (const [cwd, panel] of this.panels) {
+            if (panel.isProcessing) {
+                panel.interrupt();
+                this.activePanel = panel;
+                logger.info('已中断面板进程', { cwd });
+                return true;
+            }
+        }
+
+        logger.debug('interruptActive: 没有正在处理的面板');
+        return false;
     }
 
     /**
@@ -222,6 +262,9 @@ export class ChatPanelManager {
             if (panel) {
                 panel.dispose();
                 this.panels.delete(panels[0].cwd);
+                if (this.activePanel === panel) {
+                    this.activePanel = null;
+                }
                 vscode.window.showInformationMessage(
                     `已清空 "${panels[0].projectName}" 的对话历史。`,
                 );
@@ -261,6 +304,9 @@ export class ChatPanelManager {
             if (panel) {
                 panel.dispose();
                 this.panels.delete(picked.detail);
+                if (this.activePanel === panel) {
+                    this.activePanel = null;
+                }
                 vscode.window.showInformationMessage(
                     `已清空 "${picked.label.replace(/^.*dscli:\s*/, '')}" 的对话历史。`,
                 );
@@ -277,6 +323,7 @@ export class ChatPanelManager {
             logger.debug('ChatPanel 已释放', { cwd });
         }
         this.panels.clear();
+        this.activePanel = null;
         logger.info('ChatPanelManager 已清理');
     }
 
