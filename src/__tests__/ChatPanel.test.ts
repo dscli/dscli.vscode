@@ -400,4 +400,3 @@ describe('ChatPanel', () => {
     });
   });
 });
-});

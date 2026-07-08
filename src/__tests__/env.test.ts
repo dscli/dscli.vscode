@@ -72,7 +72,14 @@ describe('findVscodeCliPath', () => {
         expect(findVscodeCliPath('')).toBeNull();
     });
 
-    describe('macOS (current platform, real fs)', () => {
+    describe('macOS (mocked platform + fs)', () => {
+        beforeEach(() => {
+            setPlatform('darwin');
+            mockExists.mockImplementation(() => true);
+            mockAccess.mockImplementation(() => undefined);
+        });
+        afterEach(restorePlatform);
+
         it('should return macOS-specific path', () => {
             const appRoot = '/Applications/Visual Studio Code.app/Contents/Resources/app';
             expect(findVscodeCliPath(appRoot)).toBe(`${appRoot}/bin/code`);
@@ -187,14 +194,22 @@ describe('resolveEditorValue', () => {
         restorePlatform();
     });
 });
-
 // ─── getVscodeCliDir ─────────────────────────────────────────
 
 describe('getVscodeCliDir', () => {
-    it('should return directory containing code CLI on macOS', () => {
-        const appRoot = '/Applications/Visual Studio Code.app/Contents/Resources/app';
-        const dir = getVscodeCliDir(appRoot);
-        expect(dir).toBe(`${appRoot}/bin`);
+    describe('macOS (mocked platform + fs)', () => {
+        beforeEach(() => {
+            setPlatform('darwin');
+            mockExists.mockImplementation(() => true);
+            mockAccess.mockImplementation(() => undefined);
+        });
+        afterEach(restorePlatform);
+
+        it('should return directory containing code CLI on macOS', () => {
+            const appRoot = '/Applications/Visual Studio Code.app/Contents/Resources/app';
+            const dir = getVscodeCliDir(appRoot);
+            expect(dir).toBe(`${appRoot}/bin`);
+        });
     });
 
     it('should return parent dir of deb/rpm path on Linux', () => {
