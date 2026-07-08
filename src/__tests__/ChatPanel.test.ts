@@ -19,7 +19,17 @@ import { ProcessService } from '../services/ProcessService';
 import { ConfigService } from '../services/ConfigService';
 import { SecretService } from '../services/SecretService';
 
+import * as child_process from 'child_process';
+
 // ---------------------------------------------------------------------------
+// Mock child_process.execFile — loadHistoryFromDscli 依赖它
+// ---------------------------------------------------------------------------
+jest.mock('child_process', () => ({
+  ...jest.requireActual('child_process'),
+  execFile: jest.fn(),
+}));
+
+
 // Mock fs.readFileSync — ChatPanel.show() 会读取 media/chatPanel.html
 // ---------------------------------------------------------------------------
 jest.mock('fs', () => ({
@@ -233,6 +243,121 @@ describe('ChatPanel', () => {
       // HTML 应包含替换后的 nonce（不含 {{NONCE}} 占位符）
       expect(mockWebviewPanel.webview.html).not.toContain('{{NONCE}}');
       expect(mockWebviewPanel.webview.html).toContain('</html>');
+    });
+  });
+  describe('history loading (hasMoreHistory)', () => {
+    const mockExecFile = child_process.execFile as unknown as jest.Mock;
+
+    function makeHistoryItems(count: number) {
+      return Array.from({ length: count }, (_, i) => ({
+        id: i + 1,
+        role: 'user',
+        content: `msg ${i + 1}`,
+        created_at: new Date(2024, 0, i + 1).toISOString(),
+      }));
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      mockExecFile.mockReset();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should send hasMoreHistory=false when total <= pageSize (all loaded)', async () => {
+      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+        cb(null, JSON.stringify(makeHistoryItems(17)), '');
+        return { unref: jest.fn() };
+      });
+
+      const panel = createPanel();
+      panel.show();
+
+      // 触发 show() 内部的 setTimeout(200ms)
+      jest.advanceTimersByTime(200);
+      // 等待微任务（loadHistoryFromDscli 中的 Promise.resolve）
+      await Promise.resolve();
+
+      // 应该有 hasMoreHistory: false
+      expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ command: 'hasMoreHistory', hasMore: false }),
+      );
+    });
+
+    it('should send hasMoreHistory=true when total > pageSize', async () => {
+      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+        cb(null, JSON.stringify(makeHistoryItems(25)), '');
+        return { unref: jest.fn() };
+      });
+
+      const panel = createPanel();
+      panel.show();
+
+      jest.advanceTimersByTime(200);
+      await Promise.resolve();
+
+      // 有更多历史可加载
+      expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ command: 'hasMoreHistory', hasMore: true }),
+      );
+    });
+
+    it('should NOT send hasMoreHistory when no history exists', async () => {
+      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+        cb(null, JSON.stringify([]), '');
+        return { unref: jest.fn() };
+      });
+
+      const panel = createPanel();
+      panel.show();
+
+      jest.advanceTimersByTime(200);
+      await Promise.resolve();
+
+      // 无历史时不应发送 hasMoreHistory
+      const calls = (mockWebviewPanel.webview.postMessage as jest.Mock).mock.calls;
+      const hasMoreCalls = calls.filter((c: any[]) => c[0]?.command === 'hasMoreHistory');
+      expect(hasMoreCalls).toHaveLength(0);
+    });
+    it('should pass --histsize 100000 to dscli history list', async () => {
+      mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: any, cb: Function) => {
+        cb(null, JSON.stringify(makeHistoryItems(5)), '');
+        return { unref: jest.fn() };
+      });
+
+      const panel = createPanel();
+      panel.show();
+
+      jest.advanceTimersByTime(200);
+      await Promise.resolve();
+
+      // 验证 CLI 参数包含 --histsize
+      expect(mockExecFile).toHaveBeenCalled();
+      const callArgs = mockExecFile.mock.calls[0][1] as string[];
+      expect(callArgs).toContain('--histsize');
+      const histsizeIdx = callArgs.indexOf('--histsize');
+      expect(parseInt(callArgs[histsizeIdx + 1], 10)).toBeGreaterThanOrEqual(100000);
+    });
+
+    it('should load ALL history even when dscli default limit (32) would be insufficient', async () => {
+      // 模拟 200 条历史（远超默认 histsize=32），确认能全部加载进内存
+      mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: any, cb: Function) => {
+        cb(null, JSON.stringify(makeHistoryItems(200)), '');
+        return { unref: jest.fn() };
+      });
+
+      const panel = createPanel();
+      panel.show();
+
+      jest.advanceTimersByTime(200);
+      await Promise.resolve();
+
+      // 检查 postMessage 确认 hasMoreHistory: true（因为 200 > HISTORY_PAGE_SIZE=20）
+      expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ command: 'hasMoreHistory', hasMore: true }),
+      );
     });
   });
 });

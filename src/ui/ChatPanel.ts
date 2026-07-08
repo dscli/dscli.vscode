@@ -26,7 +26,11 @@ export interface ChatMessage {
     isError?: boolean;
 }
 
+// ---------------------------------------------------------------------------
 export class ChatPanel {
+    // 每次分页加载的消息条数
+    private static readonly HISTORY_PAGE_SIZE = 20;
+
     // 依赖注入
     private panel: vscode.WebviewPanel | null = null;
     private processService: ProcessService;
@@ -39,6 +43,10 @@ export class ChatPanel {
     private messageCounter = 0;
     private currentProcessId: string | null = null;
     private isInterrupted = false;
+
+    // 历史消息分页
+    private allHistoryMessages: ChatMessage[] = [];   // 从 dscli 加载的完整历史
+    private historyEndIdx = 0;                         // 已展示的消息数（从末尾计数）
 
     // 流式输出缓冲
     private streamBuffer = '';
@@ -109,25 +117,29 @@ export class ChatPanel {
             this.notifyDispose();
         });
 
-        // 发送初始工作目录和欢迎消息，然后加载历史聊天记录
+        // 发送初始工作目录，加载历史聊天记录（如有历史则不显示欢迎消息）
         setTimeout(async () => {
             this.broadcastCwd();
 
             // 从 dscli 数据库加载当前项目的聊天历史
-            await this.loadHistoryFromDscli();
+            const hasHistory = await this.loadHistoryFromDscli();
 
-            const hasApiKey = !!(await this.secretService.getApiKey());
-            const welcome = hasApiKey
-                ? `👋 欢迎使用 dscli！当前项目: **${this._projectName}**。输入你的问题开始对话。`
-                : '👋 欢迎使用 dscli！输入你的问题开始对话。\n\n💡 提示：先用命令面板 (Cmd+Shift+P) 执行 **dscli: Set API Key** 配置 API Key。\n\nAPI Key 全局存储，只需设置一次即可在所有项目中使用。';
+            // 只有首次使用（无历史记录）时才显示欢迎消息
+            if (!hasHistory) {
+                const hasApiKey = !!(await this.secretService.getApiKey());
+                const welcome = hasApiKey
+                    ? `👋 欢迎使用 dscli！当前项目: **${this._projectName}**。输入你的问题开始对话。`
+                    : '👋 欢迎使用 dscli！输入你的问题开始对话。\n\n💡 提示：先用命令面板 (Cmd+Shift+P) 执行 **dscli: Set API Key** 配置 API Key。\n\nAPI Key 全局存储，只需设置一次即可在所有项目中使用。';
 
-            this.postMessage('addMessage', {
-                role: 'system',
-                content: welcome,
-                isStreaming: false,
-                isError: false,
-            });
+                this.postMessage('addMessage', {
+                    role: 'system',
+                    content: welcome,
+                    isStreaming: false,
+                    isError: false,
+                });
+            }
         }, 200);
+
 
         return this.panel;
     }
@@ -143,19 +155,20 @@ export class ChatPanel {
 
     /**
      * 从 dscli 数据库加载当前项目的聊天历史记录。
-     * 通过 `dscli history list --json` 命令获取历史消息并显示在面板中。
+     * 使用分页策略：全部加载到内存，但只展示最后 N 条。
+     * @returns 如果加载到有效消息则返回 true，否则返回 false
      */
-    private async loadHistoryFromDscli(): Promise<void> {
+    private async loadHistoryFromDscli(): Promise<boolean> {
         const executablePath = this.configService.getConfig().executablePath;
 
         try {
             const stdout = await new Promise<string>((resolve, reject) => {
                 child_process.execFile(
                     executablePath,
-                    ['history', 'list', '--json'],
+                    ['history', 'list', '--json', '--histsize', '100000'],
                     {
                         cwd: this._cwd,
-                        maxBuffer: 10 * 1024 * 1024,
+                        maxBuffer: 50 * 1024 * 1024,
                         timeout: 15000,
                     },
                     (error, stdout, _stderr) => {
@@ -168,7 +181,7 @@ export class ChatPanel {
                 );
             });
 
-            const messages = JSON.parse(stdout) as Array<{
+            const rawMessages = JSON.parse(stdout) as Array<{
                 id: number;
                 role: string;
                 content: string;
@@ -177,7 +190,9 @@ export class ChatPanel {
                 created_at: string;
             }>;
 
-            for (const msg of messages) {
+            // 解析并过滤所有消息，存入 allHistoryMessages
+            const all: ChatMessage[] = [];
+            for (const msg of rawMessages) {
                 // 跳过 tool 角色的内部消息（工具调用结果）
                 if (msg.role === 'tool') {
                     continue;
@@ -193,15 +208,46 @@ export class ChatPanel {
                 const role = (msg.role === 'assistant' || msg.role === 'user' || msg.role === 'system')
                     ? msg.role : 'system';
 
-                const chatMsg: ChatMessage = {
+                all.push({
                     id: `hist_${msg.id}`,
                     role: role as ChatMessage['role'],
-                    content: content,
+                    content,
                     timestamp: new Date(msg.created_at),
                     isStreaming: false,
                     isError: false,
-                };
+                });
+            }
 
+            this.allHistoryMessages = all;
+            if (all.length === 0) return false;
+
+            // 只展示最后 HISTORY_PAGE_SIZE 条
+            const pageSize = ChatPanel.HISTORY_PAGE_SIZE;
+            const startIdx = Math.max(0, all.length - pageSize);
+            this.historyEndIdx = all.length - startIdx; // 已展示的条数
+            const toShow = all.slice(startIdx);
+
+            // 添加历史消息统计提示
+            const infoLine = startIdx > 0
+                ? `📜 已加载 ${toShow.length}/${all.length} 条历史记录（向上滚动查看更多）`
+                : `📜 已加载全部 ${all.length} 条历史记录`;
+
+            const infoMsg: ChatMessage = {
+                id: 'history_info',
+                role: 'system',
+                content: infoLine,
+                timestamp: new Date(),
+            };
+            this.currentMessages.push(infoMsg);
+            this.postMessage('addMessage', {
+                role: 'system',
+                content: infoLine,
+                isStreaming: false,
+                isError: false,
+            });
+
+            // 展示分页消息
+            for (const chatMsg of toShow) {
                 this.currentMessages.push(chatMsg);
                 this.postMessage('addMessage', {
                     id: chatMsg.id,
@@ -212,17 +258,69 @@ export class ChatPanel {
                 });
             }
 
+            // 通知前端是否有更多历史可加载
+            this.postMessage('hasMoreHistory', { hasMore: startIdx > 0 });
+
+
             logger.debug('加载历史记录', {
-                count: messages.filter(m => m.role !== 'tool').length,
+                total: all.length,
+                displayed: toShow.length,
                 cwd: this._cwd,
             });
+
+            return true;
+
         } catch (error: any) {
             // 无历史记录或 dscli 版本不支持 --json 时静默忽略
             logger.debug('加载历史记录跳过（首次使用或旧版 dscli）', {
                 error: error?.message,
                 cwd: this._cwd,
             });
+            return false;
         }
+    }
+
+    /**
+     * 处理前端 scroll-to-top 请求，加载更早的历史消息。
+     */
+    private handleLoadMoreHistory(): void {
+        const remaining = this.allHistoryMessages.length - this.historyEndIdx;
+        if (remaining <= 0) {
+            this.postMessage('hasMoreHistory', { hasMore: false });
+            return;
+        }
+
+        const pageSize = ChatPanel.HISTORY_PAGE_SIZE;
+        const batchSize = Math.min(pageSize, remaining);
+        const endIdx = this.allHistoryMessages.length - this.historyEndIdx;
+        const startIdx = Math.max(0, endIdx - batchSize);
+        const batch = this.allHistoryMessages.slice(startIdx, endIdx);
+        this.historyEndIdx = this.allHistoryMessages.length - startIdx;
+
+        // 构建要发送的消息列表（chronological order，前端会正确 prepend）
+        const messages = batch.map(msg => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: msg.timestamp.toISOString(),
+            isStreaming: false,
+            isError: false,
+        }));
+
+        // 更新 currentMessages（插入到最前面）
+        this.currentMessages.unshift(...batch);
+
+        this.postMessage('prependMessages', { messages });
+
+        if (startIdx === 0) {
+            this.postMessage('hasMoreHistory', { hasMore: false });
+        }
+
+        logger.debug('加载更多历史', {
+            batchSize: batch.length,
+            remaining: this.allHistoryMessages.length - this.historyEndIdx,
+            cwd: this._cwd,
+        });
     }
 
     /**
@@ -249,6 +347,8 @@ export class ChatPanel {
             this.panel = null;
         }
         this.currentMessages = [];
+        this.allHistoryMessages = [];
+        this.historyEndIdx = 0;
         // 无论 WebviewPanel 是否已创建，都要通知 dispose 回调
         this.notifyDispose();
         this.onDisposeHandlers = [];
@@ -505,6 +605,9 @@ export class ChatPanel {
                             // "切换"按钮现在触发面板导航
                             await vscode.commands.executeCommand('dscli.listChats');
                             break;
+                        case 'loadMoreHistory':
+                            this.handleLoadMoreHistory();
+                            break;
                     }
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
@@ -529,7 +632,6 @@ export class ChatPanel {
                 logger.error('ChatPanel dispose 回调异常', err);
             }
         }
-        this.onDisposeHandlers = [];
     }
 
     // -----------------------------------------------------------------------
