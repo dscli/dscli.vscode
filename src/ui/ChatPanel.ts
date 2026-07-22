@@ -426,7 +426,7 @@ export class ChatPanel {
             return;
         }
 
-        const executablePath = this.configService.getConfig().executablePath;
+        const { executablePath, streaming } = this.configService.getConfig();
 
         this.postMessage('setStatus', { content: '⏳ 正在思考...' });
 
@@ -461,7 +461,7 @@ export class ChatPanel {
                 input: content,
                 env,
                 onData: (data: string) => {
-                    this.handleStreamData(data);
+                    this.handleStreamData(data, streaming);
                 },
                 onError: (error: string) => {
                     logger.warn('dscli stderr', { error });
@@ -478,11 +478,17 @@ export class ChatPanel {
                     } else if (code !== 0 && !this.streamBuffer) {
                         this.addMessage('system', `dscli 进程异常退出 (code: ${code})`, false, true);
                     } else if (this.streamBuffer) {
-                        this.finalizeStreamMessage();
+                        if (streaming) {
+                            this.finalizeStreamMessage();
+                        } else {
+                            const content = this.streamBuffer;
+                            this.streamBuffer = '';
+                            this.streamMessageId = null;
+                            this.addMessage('assistant', content, false, false);
+                        }
                     } else {
                         this.addMessage('assistant', '（无响应）', false, true);
                     }
-
                     this.currentProcessId = null;
                     this.isInterrupted = false;
                 },
@@ -504,11 +510,7 @@ export class ChatPanel {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // 流式输出
-    // -----------------------------------------------------------------------
-
-    private handleStreamData(data: string): void {
+    private handleStreamData(data: string, streaming: boolean): void {
         // 去除前导空白和思考标记（DeepSeek 输出前会带 \n 和 . 字符）
         if (!this.streamMessageId) {
             data = data.replace(/^[\s.]+/, '');
@@ -519,6 +521,12 @@ export class ChatPanel {
 
         this.streamBuffer += data;
 
+        if (!streaming) {
+            // 非流式模式：只缓冲，不发送前端消息
+            return;
+        }
+
+        // 流式模式：逐步发送增量更新到前端
         if (!this.streamMessageId) {
             this.streamMessageId = `msg_${Date.now()}_${this.messageCounter++}`;
             this.postMessage('addStreamMessage', {
