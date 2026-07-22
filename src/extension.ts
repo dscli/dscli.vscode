@@ -17,6 +17,8 @@ import { SecretService } from './services/SecretService';
 import { ProcessService } from './services/ProcessService';
 import { ChatPanelManager } from './ui/ChatPanelManager';
 import { resolveEditorValue, getVscodeCliDir } from './utils/env';
+import { emergencyKillAll } from './utils/kill';
+
 
 const execFileAsync = promisify(execFile);
 
@@ -236,8 +238,10 @@ export class DscliExtension {
         message += `• dscli: List Chats - 列出并切换活跃面板\n`;
         message += `• dscli: Set API Key - 配置 API Key\n`;
         message += `• dscli: Check System Status - 本页面\n`;
+        message += `• dscli: Emergency Kill All - 紧急终止所有 dscli 进程 (核选项)\n`;
 
         vscode.window.showInformationMessage(message, { modal: true });
+
     }
 
     /**
@@ -274,6 +278,21 @@ export class DscliExtension {
             vscode.window.showInformationMessage('已中断当前对话');
         } else {
             logger.debug('interrupt: 没有正在处理的面板');
+        }
+    }
+
+    /**
+     * 紧急终止所有 dscli 进程。
+     * 当普通 interrupt 失效时的核选项。
+     * macOS/Linux: pkill -9 -f dscli
+     * Windows: taskkill /F /IM dscli*
+     */
+    public async emergencyKillAll(): Promise<void> {
+        const result = await emergencyKillAll();
+        if (result.killed) {
+            vscode.window.showWarningMessage(`💀 ${result.message}`);
+        } else {
+            vscode.window.showInformationMessage(result.message);
         }
     }
 
@@ -334,6 +353,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<DscliE
             vscode.commands.registerCommand('dscli.checkStatus', () => extension.checkStatus()),
             vscode.commands.registerCommand('dscli.clearHistory', () => extension.clearHistory()),
             vscode.commands.registerCommand('dscli.interrupt', () => extension.interrupt()),
+            vscode.commands.registerCommand('dscli.emergencyKillAll', () => extension.emergencyKillAll()),
         ];
 
         commands.forEach(cmd => context.subscriptions.push(cmd));
