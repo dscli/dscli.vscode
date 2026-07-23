@@ -142,9 +142,16 @@ export class ChatPanel {
             // 只有首次使用（无历史记录）时才显示欢迎消息
             if (!hasHistory) {
                 const hasApiKey = !!(await this.secretService.getApiKey());
-                const welcome = hasApiKey
-                    ? `👋 欢迎使用 dscli！当前项目: **${this._projectName}**。输入你的问题开始对话。`
-                    : '👋 欢迎使用 dscli！输入你的问题开始对话。\n\n💡 提示：先用命令面板 (Cmd+Shift+P) 执行 **dscli: Set API Key** 配置 API Key。\n\nAPI Key 全局存储，只需设置一次即可在所有项目中使用。';
+                const agentName = this.configService.getConfig().agentName;
+
+                // 方案 D: 显示 agent name + 项目信息 + API Key 提示
+                let welcome = `👋 你好！我是 **${agentName}**，你的 AI 搭档 🤝`;
+                if (this._projectName) {
+                    welcome += `\n当前在项目 **${this._projectName}** 工作`;
+                }
+                if (!hasApiKey) {
+                    welcome += '\n\n💡 提示：先用命令面板 (Cmd+Shift+P) 执行 **dscli: Set API Key** 配置 API Key。\n\nAPI Key 全局存储，只需设置一次即可在所有项目中使用。';
+                }
 
                 this.postMessage('addMessage', {
                     role: 'system',

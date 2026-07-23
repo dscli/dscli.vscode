@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 export interface Config {
     executablePath: string;
     model: string;
+    agentName: string;
 }
 
 export class ConfigService {
@@ -18,6 +19,7 @@ export class ConfigService {
         return {
             executablePath: config.get<string>('executablePath') || 'dscli',
             model: config.get<string>('model') || 'deepseek-v4-flash',
+            agentName: config.get<string>('agentName') || 'Galileo',
         };
     }
 

@@ -99,6 +99,11 @@
           "default": "deepseek-chat",
           "enum": ["deepseek-chat", "deepseek-reasoner"],
           "description": "使用的 DeepSeek 模型"
+        },
+        "dscli.agentName": {
+          "type": "string",
+          "default": "Galileo",
+          "description": "AI 助手的名字 — 在欢迎消息中显示。如 'Galileo'、'DeepSeek' 等"
         }
       }
     }
