@@ -43,8 +43,8 @@ jest.mock('fs', () => ({
 // ---------------------------------------------------------------------------
 // 共享 Mock ExtensionContext
 // ---------------------------------------------------------------------------
-function createMockContext(): vscode.ExtensionContext {
-  const store: Record<string, string> = {};
+function createMockContext(initialSecrets: Record<string, string> = {}): vscode.ExtensionContext {
+  const store: Record<string, string> = { ...initialSecrets };
   return {
     secrets: {
       get: jest.fn(async (key: string) => store[key]),
@@ -78,16 +78,18 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 // 辅助：创建 ChatPanel 实例
 // ---------------------------------------------------------------------------
-function createPanel(cwd = '/tmp/test-project'): ChatPanel {
+function createPanel(cwd = '/tmp/test-project', apiKey?: string): ChatPanel {
   const processService = new ProcessService();
   const configService = new ConfigService();
-  const secretService = new SecretService(createMockContext());
+  const initialSecrets: Record<string, string> = {};
+  if (apiKey) {
+    initialSecrets['dscli.api_key'] = apiKey;
+  }
+  const secretService = new SecretService(createMockContext(initialSecrets));
   const extensionUri = { fsPath: '/mock/extension', scheme: 'file' } as any;
 
   return new ChatPanel(processService, configService, secretService, extensionUri, cwd);
 }
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 describe('ChatPanel', () => {
@@ -543,3 +545,92 @@ describe('ChatPanel', () => {
     });
   });
 });
+  describe('welcome message (方案 D)', () => {
+    const mockExecFile = child_process.execFile as unknown as jest.Mock;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      mockExecFile.mockReset();
+      // 默认 mock：无历史 → 显示欢迎消息
+      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+        cb(null, JSON.stringify([]), '');
+        return { unref: jest.fn() };
+      });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should greet with agent name and project name when no history and has API key', async () => {
+      const panel = createPanel('/tmp/my-project', 'test-api-key');
+      panel.show();
+
+      jest.advanceTimersByTime(200);
+      for (let i = 0; i < 10; i++) {
+        await Promise.resolve();
+      }
+
+      const calls = (mockWebviewPanel.webview.postMessage as jest.Mock).mock.calls;
+      const welcomeCalls = calls.filter((c: any[]) =>
+        c[0]?.command === 'addMessage' && c[0]?.role === 'system'
+      );
+      expect(welcomeCalls.length).toBeGreaterThanOrEqual(1);
+
+      const content = welcomeCalls[0][0].content as string;
+      // 方案 D: 👋 你好！我是 {agentName}，你的 AI 搭档 🤝
+      //         当前在项目 {projectName} 工作
+      expect(content).toContain('Galileo');        // agent name (default)
+      expect(content).toContain('AI 搭档');
+      expect(content).toContain('my-project');     // project name
+      expect(content).toContain('当前在项目');
+      // 有 API key → 不应有设置提示
+      expect(content).not.toContain('API Key');
+    });
+
+    it('should show API key hint when no API key set', async () => {
+      const panel = createPanel('/tmp/my-project'); // no API key
+      panel.show();
+
+      jest.advanceTimersByTime(200);
+      for (let i = 0; i < 10; i++) {
+        await Promise.resolve();
+      }
+
+      const calls = (mockWebviewPanel.webview.postMessage as jest.Mock).mock.calls;
+      const welcomeCalls = calls.filter((c: any[]) =>
+        c[0]?.command === 'addMessage' && c[0]?.role === 'system'
+      );
+      expect(welcomeCalls.length).toBeGreaterThanOrEqual(1);
+
+      const content = welcomeCalls[0][0].content as string;
+      expect(content).toContain('Galileo');        // agent name
+      expect(content).toContain('AI 搭档');
+      expect(content).toContain('my-project');     // project name
+      expect(content).toContain('API Key');         // has hint
+      expect(content).toContain('Cmd+Shift+P');
+    });
+
+    it('should NOT send welcome message when history exists', async () => {
+      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+        cb(null, JSON.stringify([
+          { id: 1, role: 'user', content: 'hello', created_at: new Date().toISOString() },
+        ]), '');
+        return { unref: jest.fn() };
+      });
+
+      const panel = createPanel('/tmp/my-project');
+      panel.show();
+
+      jest.advanceTimersByTime(200);
+      await Promise.resolve();
+
+      const calls = (mockWebviewPanel.webview.postMessage as jest.Mock).mock.calls;
+      const welcomeCalls = calls.filter((c: any[]) =>
+        c[0]?.command === 'addMessage'
+        && typeof c[0]?.content === 'string'
+        && (c[0].content as string).startsWith('👋')
+      );
+      expect(welcomeCalls).toHaveLength(0);
+    });
+  });

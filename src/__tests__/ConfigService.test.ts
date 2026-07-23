@@ -27,6 +27,7 @@ describe('ConfigService', () => {
 
       expect(config.executablePath).toBe('dscli');
       expect(config.model).toBe('deepseek-v4-flash');
+      expect(config.agentName).toBe('Galileo');
       expect(config.streaming).toBe(true);
     });
 
@@ -34,6 +35,7 @@ describe('ConfigService', () => {
       mockGet.mockImplementation((key: string) => {
         if (key === 'executablePath') return '/usr/local/bin/dscli';
         if (key === 'model') return 'deepseek-reasoner';
+        if (key === 'agentName') return 'DeepSeek';
         if (key === 'streaming') return false;
         return undefined;
       });
@@ -43,6 +45,7 @@ describe('ConfigService', () => {
 
       expect(config.executablePath).toBe('/usr/local/bin/dscli');
       expect(config.model).toBe('deepseek-reasoner');
+      expect(config.agentName).toBe('DeepSeek');
       expect(config.streaming).toBe(false);
     });
 
