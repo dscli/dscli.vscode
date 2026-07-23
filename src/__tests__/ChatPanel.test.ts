@@ -9,6 +9,7 @@
  *   - show() → WebViewPanel 创建/复用
  *   - isProcessing → 进程状态查询
  *   - interrupt() → 中断当前处理
+ *   - streaming mode → 非流式模式累积输出后一次性显示
  *
  * WebView 完整的消息循环和 HTML 模板需要 VS Code 集成测试环境，
  * 此处不覆盖 message handler、流式渲染等。
@@ -362,6 +363,7 @@ describe('ChatPanel', () => {
       const hasMoreCalls = calls.filter((c: any[]) => c[0]?.command === 'hasMoreHistory');
       expect(hasMoreCalls).toHaveLength(0);
     });
+
     it('should pass --histsize 100000 to dscli history list', async () => {
       mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: any, cb: Function) => {
         cb(null, JSON.stringify(makeHistoryItems(5)), '');
@@ -399,6 +401,147 @@ describe('ChatPanel', () => {
       expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ command: 'hasMoreHistory', hasMore: true }),
       );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 新增：streaming mode 测试
+  // -----------------------------------------------------------------------
+  describe('streaming mode', () => {
+    beforeEach(() => {
+      // Mock child_process.execFile to return empty history quickly
+      const mockExecFile = child_process.execFile as unknown as jest.Mock;
+      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+        cb(null, JSON.stringify([]), '');
+        return { unref: jest.fn() };
+      });
+    });
+
+    it('should buffer all output and send as single addMessage when streaming=false', async () => {
+      // 1. Mock config to return streaming=false
+      const mockGet = jest.fn((key: string) => {
+        if (key === 'executablePath') return 'dscli';
+        if (key === 'model') return 'deepseek-chat';
+        if (key === 'streaming') return false;
+        return undefined;
+      });
+      (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+        get: mockGet,
+        update: jest.fn(),
+      });
+      // 2. No need to mock vscode.env — already in global mock (jest.setup.cjs)
+
+      // 3. Mock API key so handleUserMessage proceeds to process creation
+      jest.spyOn(SecretService.prototype, 'getApiKey').mockResolvedValue('test-api-key');
+
+      // 4. Mock ProcessService.createProcess to capture callbacks
+      let capturedOnData: ((data: string) => void) | null = null;
+      let capturedOnExit: ((code: number | null, signal: NodeJS.Signals | null) => void) | null = null;
+
+      // Create process service instance and mock createProcess on it
+      const processService = new ProcessService();
+      const mockCreateProcess = jest.fn().mockImplementation(async (opts: any) => {
+        capturedOnData = opts.onData;
+        capturedOnExit = opts.onExit;
+        return 'proc-test-1';
+      });
+      processService.createProcess = mockCreateProcess;
+
+      // 5. Create panel with mocked process service
+      const configService = new ConfigService();
+      const secretService = new SecretService(createMockContext());
+      const extensionUri = { fsPath: '/mock/extension', scheme: 'file' } as any;
+      const panel = new ChatPanel(processService, configService, secretService, extensionUri, '/tmp/test');
+      panel.show();
+
+      // 6. Wait for async initialization (loadHistoryFromDscli)
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // 7. Clear any postMessage calls from initialization
+      (mockWebviewPanel.webview.postMessage as jest.Mock).mockClear();
+
+      // 8. Send a user message
+      panel.sendUserMessage('test message');
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // 9. Verify createProcess was called
+      expect(mockCreateProcess).toHaveBeenCalledTimes(1);
+      expect(capturedOnData).not.toBeNull();
+      expect(capturedOnExit).not.toBeNull();
+
+      // 10. Simulate streaming data chunks (should be buffered, not streamed)
+      capturedOnData!('Hello, ');
+      capturedOnData!('this is a ');
+      capturedOnData!('non-streaming response.');
+      capturedOnExit!(0, null);
+
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // 11. Verify: NO stream-related messages were sent
+      const postMessageMock = mockWebviewPanel.webview.postMessage as jest.Mock;
+      const allCalls = postMessageMock.mock.calls;
+      const commands = allCalls.map((c: any[]) => c[0]?.command);
+      expect(commands).not.toContain('addStreamMessage');
+      expect(commands).not.toContain('updateStreamMessage');
+      expect(commands).not.toContain('finalizeStreamMessage');
+
+      // 12. Verify: single addMessage with combined content
+      const addMessageCalls = allCalls.filter((c: any[]) => c[0]?.command === 'addMessage');
+      const assistantMsg = addMessageCalls.find((c: any[]) => c[0]?.role === 'assistant');
+      expect(assistantMsg).toBeDefined();
+      expect(assistantMsg[0].content).toBe('Hello, this is a non-streaming response.');
+    });
+    it('should still stream when streaming=true (default)', async () => {
+      // 1. Default config (streaming=true)
+      const mockGet = jest.fn((key: string) => {
+        if (key === 'executablePath') return 'dscli';
+        if (key === 'model') return 'deepseek-chat';
+        // streaming not set → defaults to true
+        return undefined;
+      });
+      (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+        get: mockGet,
+        update: jest.fn(),
+      });
+      // 2. No need to mock vscode.env — already in global mock (jest.setup.cjs)
+
+      // 3. Mock API key
+      jest.spyOn(SecretService.prototype, 'getApiKey').mockResolvedValue('test-api-key');
+
+      // 4. Mock ProcessService.createProcess on instance
+      let capturedOnData: ((data: string) => void) | null = null;
+      const processService = new ProcessService();
+      const mockCreateProcess = jest.fn().mockImplementation(async (opts: any) => {
+        capturedOnData = opts.onData;
+        return 'proc-test-2';
+      });
+      processService.createProcess = mockCreateProcess;
+
+      // 5. Create panel with mocked process service
+      const configService = new ConfigService();
+      const secretService = new SecretService(createMockContext());
+      const extensionUri = { fsPath: '/mock/extension', scheme: 'file' } as any;
+      const panel = new ChatPanel(processService, configService, secretService, extensionUri, '/tmp/test');
+      panel.show();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      (mockWebviewPanel.webview.postMessage as jest.Mock).mockClear();
+
+      // 6. Send message
+      panel.sendUserMessage('test');
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(mockCreateProcess).toHaveBeenCalledTimes(1);
+      expect(capturedOnData).not.toBeNull();
+
+      // 7. Simulate data chunks — should produce stream messages
+      capturedOnData!('Hello');
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const postMessageMock = mockWebviewPanel.webview.postMessage as jest.Mock;
+      const commands = postMessageMock.mock.calls.map((c: any[]) => c[0]?.command);
+
+      // Should have addStreamMessage for streaming
+      expect(commands).toContain('addStreamMessage');
     });
   });
 });

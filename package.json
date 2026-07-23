@@ -75,8 +75,14 @@
         "command": "dscli.interrupt",
         "title": "中断当前操作",
         "category": "dscli"
+      },
+      {
+        "command": "dscli.emergencyKillAll",
+        "title": "Emergency Kill All — 终止所有 dscli 进程",
+        "category": "dscli"
       }
     ],
+
     "menus": {
       "explorer/context": [
         {
@@ -104,6 +110,11 @@
           "type": "string",
           "default": "Galileo",
           "description": "AI 助手的名字 — 在欢迎消息中显示。如 'Galileo'、'DeepSeek' 等"
+        },
+        "dscli.streaming": {
+          "type": "boolean",
+          "default": true,
+          "description": "流式输出。开启后逐字显示回复内容，关闭后等待完整回复后一次性显示"
         }
       }
     }
