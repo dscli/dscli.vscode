@@ -59,10 +59,13 @@ jest.mock('vscode', () => {
       file: (p) => ({ fsPath: p, scheme: 'file', path: p }),
       parse: (s) => ({ fsPath: s, scheme: 'file', path: s }),
     },
-    version: '1.85.0'
+    version: '1.85.0',
+    env: {
+      appRoot: undefined,  // 由各测试按需设置
+      language: 'zh-CN',
+    }
   };
 }, { virtual: true });
-
 // 全局测试超时
 jest.setTimeout(10000);
 
