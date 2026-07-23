@@ -138,55 +138,6 @@ export PATH=$PATH:$(go env GOPATH)/bin
 2. 确认 API Key 有效且有余额
 3. 在终端测试：`echo "hello" | dscli chat`
 
-### AskUser（询问用户）不工作
-
-问题表现为 dscli 调用 `askUser` 时卡住无响应，或者编辑器虽然打开了但立即返回、用户编辑的内容没有被读取。
-**v0.4.0+ 增强**：扩展现在会在启动 dscli 时自动检测 VSCode CLI (`code`) 路径并设置 `EDITOR` 环境变量，大多数情况下无需手动配置即可正常使用 AskUser。
-
-如果仍遇到问题，请按以下步骤排查：
-
-**自动修复**
-
-从 v0.1.x 开始，dscli.vscode 扩展会在启动 dscli 进程时**自动检测当前 VSCode 实例的 `code` CLI 路径**并设置 `EDITOR` 环境变量。如果检测成功，`askUser` 应该直接可用，无需手动配置。
-
-如果自动检测失败（例如 VSCode 安装结构特殊），请按以下步骤排查：
-
-**诊断步骤**
-
-终端运行以下命令检查环境：
-
-```bash
-echo "EDITOR=$EDITOR"
-which code
-```
-
-- 如果 `EDITOR=`（空），说明 `EDITOR` 环境变量未设置
-- 如果 `which code` 报 `code not found`，说明 VSCode 的 `code` 命令不在 PATH 中
-- 如果 `$EDITOR` 的值中不包含 `--wait`，说明编辑器缺少阻塞参数（会立即返回而非等待编辑完成）
-
-**手动解决方案**
-
-1. 确保 `code` 命令在 PATH 中：
-   - **macOS**：VSCode 中 `Cmd+Shift+P` → `Shell Command: Install 'code' command in PATH`
-   - **Windows**：安装 VSCode 时勾选「Add to PATH」，或手动将 VSCode 安装目录下的 `bin` 文件夹添加到系统环境变量 Path
-   - **Linux**：VSCode 通常安装时自动添加到 PATH，若没有则添加软链：`sudo ln -s /usr/share/code/bin/code /usr/local/bin/code`
-
-2. 设置 `EDITOR` 环境变量（含 `--wait` 参数）：
-   - **macOS**：在 `~/.zshrc` 或 `~/.bash_profile` 中添加 `export EDITOR="code --wait"`，然后执行 `source ~/.zshrc` 并重启 VSCode
-   - **Linux**：在 `~/.bashrc` 或 `~/.zshrc` 中添加 `export EDITOR="code --wait"`，然后执行 `source ~/.bashrc` 并重启 VSCode
-   - **Windows**：系统设置 → 高级系统设置 → 环境变量 → 新建 `EDITOR`，值为 `code --wait`，然后重启 VSCode
-
-设置完成后，重启 VSCode，重新测试 `askUser` 功能。
-
-如果想使用其他编辑器（如 vim、nano），设置 `EDITOR` 环境变量即可：
-
-```bash
-# 使用 vim（需含阻塞参数）
-export EDITOR="vim -f"
-```
-
-扩展的自动检测会优先保留系统已有的 `EDITOR` 配置，不会覆盖用户手动设置的值。
-
 ## 卸载
 
 ```bash
